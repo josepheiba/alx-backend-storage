@@ -1,40 +1,22 @@
 #!/usr/bin/env python3
-"""
-module contains function and decorator function
-that caches requests in redis cache
-"""
+""" Implementing an expiring web cache and tracker
+    obtain the HTML content of a particular URL and returns it """
 import redis
 import requests
-from functools import wraps
+r = redis.Redis()
+count = 0
 
 
-store = redis.Redis()
-
-
-def url_cacher(method):
-    """
-    decorator function caches web requests
-    """
-    @wraps(method)
-    def invoker(url):
-        """
-        function returns saves requests and returns cached requests
-        """
-        data = store.get(f"key:{url}")
-        if data:
-            return data.decode("utf-8")
-        count = f"count:{url}"
-        html = method(url)
-        store.incr(count)
-        store.set(url, html)
-        store.expire(url, 10)
-        return html
-    return invoker
-
-
-@url_cacher
 def get_page(url: str) -> str:
-    """
-    function gets html content
-    """
-    return requests.get(url).text
+    """ track how many times a particular URL was accessed in the key
+        "count:{url}"
+        and cache the result with an expiration time of 10 seconds """
+    r.set(f"cached:{url}", count)
+    resp = requests.get(url)
+    r.incr(f"count:{url}")
+    r.setex(f"cached:{url}", 10, r.get(f"cached:{url}"))
+    return resp.text
+
+
+if __name__ == "__main__":
+    get_page('http://slowwly.robertomurray.co.uk')
