@@ -1,40 +1,27 @@
-#!/usr/bin/env python3
-"""
-module contains function and decorator function
-that caches requests in redis cache
-"""
 import redis
 import requests
-from functools import wraps
 
 
-store = redis.Redis()
+r = redis.Redis()
 
 
-def url_cacher(method):
-    """
-    decorator function caches web requests
-    """
-    @wraps(method)
-    def invoker(url):
-        """
-        function returns saves requests and returns cached requests
-        """
-        data = store.get(f"key:{url}")
-        if data:
-            return data.decode("utf-8")
-        count = f"count:{url}"
-        html = method(url)
-        store.incr(count)
-        store.set(url, html)
-        store.expire(url, 10)
-        return html
-    return invoker
-
-
-@url_cacher
 def get_page(url: str) -> str:
     """
-    function gets html content
+    Fetches the HTML content of the given URL and caches it for 10 seconds.
+    Tracks the number of times the URL has been accessed.
     """
-    return requests.get(url).text
+    count_key = f"count:{url}"
+    r.incr(count_key)
+    cached_content = r.get(url)
+    if cached_content:
+        return cached_content.decode('utf-8')
+    response = requests.get(url)
+    content = response.text
+    r.setex(url, 10, content)
+    return content
+
+
+if __name__ == "__main__":
+    url = "http://slowwly.robertomurray.co.uk"
+    print(get_page(url))
+    print(f"Access count: {r.get(f'count:{url}').decode('utf-8')}")
