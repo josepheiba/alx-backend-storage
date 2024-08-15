@@ -1,24 +1,33 @@
 import redis
 import requests
-
+from typing import Callable
 
 r = redis.Redis()
 
 
+def cache_with_tracking(func: Callable) -> Callable:
+    """
+    Decorator that caches the result of a function
+    """
+    def wrapper(url: str) -> str:
+        count_key = f"count:{url}"
+        r.incr(count_key)
+        cached_content = r.get(url)
+        if cached_content:
+            return cached_content.decode('utf-8')
+        content = func(url)
+        r.setex(url, 10, content)
+        return content
+    return wrapper
+
+
+@cache_with_tracking
 def get_page(url: str) -> str:
     """
-    Fetches the HTML content of the given URL and caches it for 10 seconds.
-    Tracks the number of times the URL has been accessed.
+    Fetches the HTML content of the given URL.
     """
-    count_key = f"count:{url}"
-    r.incr(count_key)
-    cached_content = r.get(url)
-    if cached_content:
-        return cached_content.decode('utf-8')
     response = requests.get(url)
-    content = response.text
-    r.setex(url, 10, content)
-    return content
+    return response.text
 
 
 if __name__ == "__main__":
