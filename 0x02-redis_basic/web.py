@@ -1,22 +1,58 @@
 #!/usr/bin/env python3
-""" Implementing an expiring web cache and tracker
-    obtain the HTML content of a particular URL and returns it """
-import redis
+"""
+0x02-redis_basic
+"""
 import requests
-r = redis.Redis()
-count = 0
+import redis
+from typing import Callable
+from functools import wraps
+from time import sleep
 
 
+redisInstance = redis.Redis()
+redisInstance.flushdb()
+
+
+def callsCount(method: Callable) -> Callable:
+    """A decorator that takes a method callable argument
+    that increments the callsCount."""
+
+    @wraps(method)
+    def incrCount(url: str) -> str:
+        """A method that increments the numbers of requests
+        done for a URL."""
+
+        countKey = f"count:{url}"
+        storageKey = f"storage:{url}"
+        storageVal = redisInstance.get(storageKey)
+        if storageVal:
+            redisInstance.incr(countKey)
+            return storageVal.decode("utf-8")
+        call = method(url)
+        redisInstance.setex(storageKey, 10, call)
+        redisInstance.set(countKey, 1)
+        return call
+
+    return incrCount
+
+
+@callsCount
 def get_page(url: str) -> str:
-    """ track how many times a particular URL was accessed in the key
-        "count:{url}"
-        and cache the result with an expiration time of 10 seconds """
-    r.set(f"cached:{url}", count)
-    resp = requests.get(url)
-    r.incr(f"count:{url}")
-    r.setex(f"cached:{url}", 10, r.get(f"cached:{url}"))
-    return resp.text
+    """A method that uses the requests module to obtain the HTML
+    content of a particular URL and returns it."""
+    try:
+        response = requests.get(url).text
+        return response
+    except requests.RequestException as e:
+        return
 
 
 if __name__ == "__main__":
-    get_page('http://slowwly.robertomurray.co.uk')
+    url = "http://slowwly.robertomurray.co.uk"
+    get_page(url)
+    get_page(url)
+    get_page(url)
+    get_page(url)
+    print(redisInstance.get(f"storage:{url}"))
+    sleep(12)
+    print(redisInstance.get(f"storage:{url}"))
